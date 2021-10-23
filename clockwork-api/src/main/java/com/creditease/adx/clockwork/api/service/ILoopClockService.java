@@ -1,5 +1,6 @@
 package com.creditease.adx.clockwork.api.service;
 
+import com.creditease.adx.clockwork.common.entity.BatchUpdateLoopClock;
 import com.creditease.adx.clockwork.common.entity.gen.TbClockworkTask;
 import com.creditease.adx.clockwork.common.pojo.TbClockworkTaskPojo;
 
@@ -47,10 +48,10 @@ public interface ILoopClockService {
     /**
      * 构建多个作业环形时钟信息（批量）
      *
-     * @param taskPojoList taskList
+     * @param taskPojoList taskPojoList
      * @return boolean
      */
-    boolean addTaskToLoopClockSlotByBatch(List<TbClockworkTaskPojo> taskPojoList);
+    boolean upTaskToLoopClockSlotByBatch(List<TbClockworkTaskPojo> taskPojoList);
 
     /**
      * 获取指定时间槽位的作业

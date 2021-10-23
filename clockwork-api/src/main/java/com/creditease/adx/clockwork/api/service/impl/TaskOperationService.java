@@ -676,7 +676,7 @@ public class TaskOperationService implements ITaskOperationService {
         // 如果有父亲任务没有成功，则返回false
         if (!fathersNoSuccess.isEmpty()) {
             LOG.info("Found father is not success status, fathers status = {}, task id = {}, task current status = {}",
-                    org.apache.commons.lang.StringUtils.join(fathersNoSuccess, ","), task.getId(), task.getStatus());
+                    StringUtils.join(fathersNoSuccess, ","), task.getId(), task.getStatus());
             return false;
         }
         return true;

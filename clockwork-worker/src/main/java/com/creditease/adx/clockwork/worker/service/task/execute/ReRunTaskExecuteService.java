@@ -292,7 +292,7 @@ public class ReRunTaskExecuteService extends TaskExecuteService implements Runna
         if (!fathersNoSuccess.isEmpty()) {
             LOG.info("TbClockworkTaskPojo can't be submit to worker, because has father is not success status," +
                             "fathers status = {}, childTask.taskId = {}, childTask.task current status = {}",
-                    org.apache.commons.lang.StringUtils.join(fathersNoSuccess, ","),
+                    StringUtils.join(fathersNoSuccess, ","),
                     childTask.getId(), childTask.getStatus());
             return false;
         }

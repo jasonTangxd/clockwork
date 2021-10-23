@@ -84,13 +84,13 @@ public class LoopClockController {
     @PostMapping(value = "/addTaskToLoopClockSlotByBatch")
     public Map<String, Object> addTaskToLoopClockSlotByBatch(@RequestBody List<TbClockworkTaskPojo> taskPojoList) {
         try {
-            boolean buildTaskLoopClockResult = loopClockService.addTaskToLoopClockSlotByBatch(taskPojoList);
+            boolean buildTaskLoopClockResult = loopClockService.upTaskToLoopClockSlotByBatch(taskPojoList);
             if (buildTaskLoopClockResult) {
                 return Response.success(true);
             }
             return Response.fail(false);
         } catch (Exception e) {
-            LOG.error("LoopClockController-addTaskToLoopClockSlotByBatch, Error {}.", e.getMessage(), e);
+            LOG.error("LoopClockController-upTaskToLoopClockSlotByBatch, Error {}.", e.getMessage(), e);
             return Response.fail(e.getMessage());
         }
     }

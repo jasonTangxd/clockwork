@@ -75,7 +75,7 @@ public class TestLoopClockService {
             taskIds.add(5);
         }
         long startTime = System.currentTimeMillis();
-        loopClockService.addTaskToLoopClockSlotByBatch(null);
+        loopClockService.upTaskToLoopClockSlotByBatch(null);
         long endTime = System.currentTimeMillis();
         System.out.println("------------------>>>> " + (endTime - startTime) + " .ms");
     }

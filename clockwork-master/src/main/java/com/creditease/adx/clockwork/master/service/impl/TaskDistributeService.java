@@ -178,11 +178,11 @@ public class TaskDistributeService implements ITaskDistributeService, Runnable {
                 if (splitTask.size() > taskBatchSendToWorkerNum) {
                     List<List<TbClockworkTaskPojo>> fixedGrouping = DataUtil.fixedGrouping(splitTask, taskBatchSendToWorkerNum);
                     for (List<TbClockworkTaskPojo> taskPojoList : fixedGrouping) {
-                        new Thread(new TaskDistributeService.SendTasksToWorkerThread(
+                        new Thread(new SendTasksToWorkerThread(
                                 node, taskPojoList, taskSubmitInfo, executeType)).start();
                     }
                 } else {
-                    new Thread(new TaskDistributeService.SendTasksToWorkerThread(
+                    new Thread(new SendTasksToWorkerThread(
                             node, splitTask, taskSubmitInfo, executeType)).start();
                 }
             }

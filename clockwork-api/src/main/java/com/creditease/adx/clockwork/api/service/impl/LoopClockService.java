@@ -1,6 +1,7 @@
 package com.creditease.adx.clockwork.api.service.impl;
 
 import com.creditease.adx.clockwork.api.service.ILoopClockService;
+import com.creditease.adx.clockwork.common.entity.BatchUpdateLoopClock;
 import com.creditease.adx.clockwork.common.entity.gen.*;
 import com.creditease.adx.clockwork.common.enums.TaskTakeEffectStatus;
 import com.creditease.adx.clockwork.common.enums.TimeToMills;
@@ -30,6 +31,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * @ Author     ：XuanDongTang
@@ -214,81 +216,136 @@ public class LoopClockService implements ILoopClockService {
     }
 
     /**
-     * 构建多个作业环形时钟信息（批量）
+     * 更新槽位预处理
      *
-     * @param taskPojoList taskList
-     * @return boolean
+     * @param taskPojoList taskPojoList
+     * @return BatchUpdateLoopClock
      */
-    @Override
-    public boolean addTaskToLoopClockSlotByBatch(List<TbClockworkTaskPojo> taskPojoList) {
+    private BatchUpdateLoopClock preBatchUpdateLoopClock(List<TbClockworkTaskPojo> taskPojoList) {
         if (CollectionUtils.isEmpty(taskPojoList)) {
-            return false;
+            return null;
         }
 
         // 删除的任务ID集合
         List<Integer> deleteTaskIds = new ArrayList<>();
         // 需要新添加的作业和槽位的关系集合
-        List<TbClockworkTaskAndSlotRelation> addTaskAndLoopClockSlotRel = new ArrayList<>();
+        List<TbClockworkTaskAndSlotRelation> addSlotRelations = new ArrayList<>();
         // 需要更新触发时间的任务集合
-        List<TbClockworkTask> updateTriggerTimeTbClockworkTasks = new ArrayList<>();
+        List<TbClockworkTask> updateTriggerTimes = new ArrayList<>();
 
+        BatchUpdateLoopClock batchUpdateLoopClock = new BatchUpdateLoopClock();
         for (TbClockworkTaskPojo taskPojo : taskPojoList) {
             // 没有cron表达式则忽略
             if (StringUtils.isEmpty(taskPojo.getCronExp())) {
                 continue;
             }
 
-            // 作业和槽位的更新采取先删除后添加的方式，所有将此任务ID加入删除的任务ID集合
+            // 1。作业和槽位的更新采取先删除后添加的方式，所有将此任务ID加入删除的任务ID集合
             deleteTaskIds.add(taskPojo.getId());
 
-            // 获取当前任务的下一次运行开始时间
+            // 2。获取并设置当前任务的下一次运行开始时间
             long nextMatchingTime = CronExpression.nextMatchingTime(taskPojo.getCronExp());
-
-            // 设置下一次触发时间，并加入到更新集合，用于前端显示
             taskPojo.setNextTriggerTime(new Date(nextMatchingTime));
-            updateTriggerTimeTbClockworkTasks.add(taskPojo);
+            updateTriggerTimes.add(taskPojo);
 
-            // 获取当前天的零点零分零秒
+            // 3。获取当前天的零点零分零秒
             Long dayStartTimestamp = DateUtil.getDayStartTimestamp(0);
             // 计算下一次运行时间和当前天的时间差，用来计算需要将任务放入哪个槽位
             Long betweenMillis = nextMatchingTime - dayStartTimestamp;
             // 此变量代表跨了几天，等于零代表不跨天，是当前天，累加以此类推
             Long offsetDay = betweenMillis / TimeToMills.MILLS_OF_DAY.getValue();
             // 组装作业和槽位的关系对象
-            TbClockworkTaskAndSlotRelation record = getTaskAndLoopClockSlotRelByOffsetDay(
-                    nextMatchingTime, offsetDay, taskPojo.getId(), taskPojo.getGroupId());
+            TbClockworkTaskAndSlotRelation record
+                    = getTaskAndLoopClockSlotRelByOffsetDay(nextMatchingTime, offsetDay, taskPojo.getId(), taskPojo.getGroupId());
             // 添加到作业和槽位的关系集合
             addTaskAndLoopClockSlotRel.add(record);
         }
 
-        // 操作数据库删除作业和槽位的关系
-        if (!deleteTaskIds.isEmpty()) {
-            TbClockworkTaskAndSlotRelationExample example = new TbClockworkTaskAndSlotRelationExample();
-            example.createCriteria().andTaskIdIn(deleteTaskIds);
-            tbClockworkTaskAndLoopClockSlotRelMapper.deleteByExample(example);
-            LOG.info("[addTaskToLoopClockSlotByBatch]delete task rel size = {}", deleteTaskIds.size());
-        } else {
-            LOG.info("[addTaskToLoopClockSlotByBatch]delete task rel size = {}", 0);
+        // 获取deleteSlotIds
+        if(CollectionUtils.isEmpty(deleteTaskIds)){
+            return null;
+        }
+        TbClockworkTaskAndSlotRelationExample example = new TbClockworkTaskAndSlotRelationExample();
+        example.createCriteria().andTaskIdIn(deleteTaskIds);
+        List<TbClockworkTaskAndSlotRelation> taskAndSlotRelations = tbClockworkTaskAndLoopClockSlotRelMapper.selectByExample(example);
+        List<Integer> deleteSlotIds
+                = taskAndSlotRelations.stream().map(TbClockworkTaskAndSlotRelation::getId).collect(Collectors.toList());
+
+        batchUpdateLoopClock.setAddSlotRelations(addSlotRelations);
+        batchUpdateLoopClock.setDeleteSlotIds(deleteSlotIds);
+        batchUpdateLoopClock.setUpdateTriggerTimes(updateTriggerTimes);
+        return batchUpdateLoopClock;
+    }
+
+
+    /**
+     * 构建多个作业环形时钟信息（批量）
+     *
+     * @param taskPojoList taskPojoList
+     * @return boolean
+     */
+    @Override
+    public boolean upTaskToLoopClockSlotByBatch(List<TbClockworkTaskPojo> taskPojoList) {
+        if (CollectionUtils.isEmpty(taskPojoList)) {
+            return false;
         }
 
-        // 操作数据库添加作业和槽位的关系
-        if (!addTaskAndLoopClockSlotRel.isEmpty()) {
-            taskBatchMapper.batchInsertTaskAndLoopClockSlotRel(addTaskAndLoopClockSlotRel);
-            LOG.info("[addTaskToLoopClockSlotByBatch]add task rel size = {}", addTaskAndLoopClockSlotRel.size());
-        } else {
-            LOG.info("[addTaskToLoopClockSlotByBatch]add task rel size = {}", 0);
+        // 预处理
+        BatchUpdateLoopClock batchLoopClock = preBatchUpdateLoopClock(taskPojoList);
+        if (batchLoopClock == null) {
+            return false;
         }
+        List<Integer> deleteSlotIds = batchLoopClock.getDeleteSlotIds();
+        List<TbClockworkTaskAndSlotRelation> addSlotRelations = batchLoopClock.getAddSlotRelations();
+        List<TbClockworkTask> updateTriggerTimes = batchLoopClock.getUpdateTriggerTimes();
 
-        // 操作数据库更新下一次触发时间的作业
-        if (!updateTriggerTimeTbClockworkTasks.isEmpty()) {
-            taskBatchMapper.batchUpdateTaskNextTriggerTime(updateTriggerTimeTbClockworkTasks);
-            LOG.info("[addTaskToLoopClockSlotByBatch]update task trigger time size = {}",
-                    updateTriggerTimeTbClockworkTasks.size());
-        } else {
-            LOG.info("[addTaskToLoopClockSlotByBatch]update task trigger time size = {}", 0);
-        }
-
+        // 更新槽位和触发时间
+        updateTaskToLoopClockSlotByBatch(deleteSlotIds, addSlotRelations);
+        updateTasksTriggerTime(updateTriggerTimes);
         return true;
+    }
+
+    /**
+     * 更新槽位
+     *
+     * @param deleteSlotIds    deleteSlotIds
+     * @param addSlotRelations addSlotRelations
+     */
+    private void updateTaskToLoopClockSlotByBatch(List<Integer> deleteSlotIds,
+                                                  List<TbClockworkTaskAndSlotRelation> addSlotRelations) {
+
+        // 删除槽位
+        if (CollectionUtils.isNotEmpty(deleteSlotIds)) {
+            TbClockworkTaskAndSlotRelationExample example = new TbClockworkTaskAndSlotRelationExample();
+            example.createCriteria().andIdIn(deleteSlotIds);
+            tbClockworkTaskAndLoopClockSlotRelMapper.deleteByExample(example);
+            LOG.info("[updateTaskToLoopClockSlotByBatch]delete task rel size = {}", deleteSlotIds.size());
+        } else {
+            LOG.info("[updateTaskToLoopClockSlotByBatch]delete task rel size = {}", 0);
+        }
+
+        // 添加槽位
+        if (CollectionUtils.isNotEmpty(addSlotRelations)) {
+            taskBatchMapper.batchInsertTaskAndLoopClockSlotRel(addSlotRelations);
+            LOG.info("[updateTaskToLoopClockSlotByBatch]add task rel size = {}", addSlotRelations.size());
+        } else {
+            LOG.info("[updateTaskToLoopClockSlotByBatch]add task rel size = {}", 0);
+        }
+    }
+
+    /**
+     * 操作数据库更新下一次触发时间的作业
+     *
+     * @param updateTriggerTimes tasks
+     */
+    private void updateTasksTriggerTime(List<TbClockworkTask> updateTriggerTimes) {
+        if (CollectionUtils.isNotEmpty(updateTriggerTimes)) {
+            taskBatchMapper.batchUpdateTaskNextTriggerTime(updateTriggerTimes);
+            LOG.info("[updateTasksTriggerTime]update task trigger time size = {}",
+                    updateTriggerTimes.size());
+        } else {
+            LOG.info("[updateTasksTriggerTime]update task trigger time size = {}", 0);
+        }
     }
 
     /**
